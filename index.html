@@ -1,0 +1,2111 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>普普風 AI 題庫生成及管理工具</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;700;900&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            overflow-x: hidden;
+        }
+        /* 普普藝術風格元件 */
+        .pop-card {
+            background-color: white;
+            border: 4px solid black;
+            box-shadow: 8px 8px 0 0 #000;
+            transition: all 0.2s ease-in-out;
+        }
+        .pop-button {
+            border: 3px solid black;
+            font-weight: 700;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 4px 4px 0 0 #000;
+        }
+        .pop-button:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 0 #000;
+        }
+        .pop-button:active {
+            transform: translate(4px, 4px);
+            box-shadow: none;
+        }
+        .pop-input, .pop-textarea, .pop-select {
+            border: 3px solid black;
+            transition: all 0.2s ease-in-out;
+        }
+        .pop-input:focus, .pop-textarea:focus, .pop-select:focus {
+            outline: none;
+            box-shadow: 0 0 0 4px #facc15; /* yellow-400 */
+        }
+        .pop-tab {
+            border: 3px solid black;
+            border-bottom: none;
+            margin-bottom: -3px;
+            font-weight: 700;
+        }
+        .pop-tab.active {
+            background-color: #fef08a; /* yellow-200 */
+        }
+        .pop-tab-content {
+            border: 3px solid black;
+        }
+        /* 點狀背景 */
+        .dots-bg {
+            background-image: radial-gradient(circle, #000 1px, transparent 1px);
+            background-size: 15px 15px;
+        }
+        .modal-backdrop {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0,0,0,0.7);
+            z-index: 50;
+        }
+        /* 載入動畫 */
+        .loader {
+            width: 50px;
+            aspect-ratio: 1;
+            border-radius: 50%;
+            border: 8px solid #0000;
+            border-right-color: #f87171; /* red-400 */
+            position: relative;
+            animation: l24 1s infinite linear;
+        }
+        .loader:before,
+        .loader:after {
+            content: "";
+            position: absolute;
+            inset: -8px;
+            border-radius: 50%;
+            border: inherit;
+            animation: inherit;
+            animation-duration: 2s;
+        }
+        .loader:after {
+            animation-duration: 4s;
+        }
+        @keyframes l24 {
+            100% {transform: rotate(1turn)}
+        }
+    </style>
+</head>
+<body class="bg-yellow-300">
+
+    <div id="app" class="container mx-auto p-4 md:p-8 max-w-7xl relative">
+        <!-- Settings Button -->
+        <div class="absolute top-4 right-4 z-10">
+            <button id="settings-btn" class="pop-button bg-white p-3 rounded-full text-2xl" title="設定">⚙️</button>
+        </div>
+
+        <!-- 標題 -->
+        <header class="text-center mb-12">
+            <div class="relative inline-block">
+                <h1 class="text-5xl md:text-7xl font-black text-black inline-block p-4 bg-red-500 border-4 border-black" style="transform: rotate(-2deg);">
+                    AI 題庫生成及管理工具
+                </h1>
+                <span class="absolute -top-2 -right-4 text-sm font-bold text-gray-600 bg-yellow-300 border-2 border-black px-2 py-1 rounded transform rotate-12" style="box-shadow: 2px 2px 0 0 #000;">
+                    Made by 阿剛老師
+                </span>
+            </div>
+            <p class="text-xl font-bold mt-4 text-black">POP ART EDITION!</p>
+        </header>
+
+        <main class="max-w-6xl mx-auto">
+            <!-- 頂部操作按鈕區 -->
+            <div class="flex justify-center gap-4 mb-8">
+                <button id="open-material-modal" class="pop-button bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg text-lg font-bold flex items-center gap-2">
+                    📚 新增教材
+                </button>
+                <button id="open-batch-add-modal" class="pop-button bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg text-lg font-bold flex items-center gap-2">
+                    ✍️ 批次新增
+                </button>
+                <button id="open-data-modal" class="pop-button bg-gray-600 hover:bg-gray-700 text-white px-6 py-3 rounded-lg text-lg font-bold flex items-center gap-2">
+                    💾 資料管理
+                </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 左側：我的題庫 -->
+                <section id="bank-section">
+                    <div class="pop-card p-6">
+                        <h2 class="text-3xl font-black mb-4 flex items-center">
+                            <span class="text-white bg-green-500 rounded-full w-10 h-10 flex items-center justify-center text-xl mr-3 border-2 border-black">📚</span>
+                            我的題庫
+                        </h2>
+                        <div id="bank-list">
+                            <!-- 題庫列表將動態生成於此 -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 右側：出題與匯出 -->
+            <section id="output-section">
+                 <div class="pop-card p-6 dots-bg">
+                    <h2 class="text-3xl font-black mb-4 flex items-center">
+                        <span class="text-white bg-red-500 rounded-full w-10 h-10 flex items-center justify-center text-xl mr-3 border-2 border-black">🎯</span>
+                        生成練習與匯出
+                    </h2>
+                    <div id="quiz-generator">
+                         <div class="bg-white/80 backdrop-blur-sm p-4 border-2 border-dashed border-black rounded-lg">
+                            <p class="font-bold text-lg mb-2">請先從左側選擇要使用的題庫。</p>
+                            <div class="mb-4">
+                                <p class="font-bold">生成模式：</p>
+                                <div class="grid grid-cols-2 gap-2 mt-2">
+                                    <button id="generate-quiz-btn-auto" class="w-full pop-button bg-blue-400 hover:bg-blue-500 text-white py-2 text-lg rounded-lg" disabled>自動生成</button>
+                                    <button id="generate-quiz-btn-manual" class="w-full pop-button bg-teal-400 hover:bg-teal-500 text-white py-2 text-lg rounded-lg" disabled>手動選題</button>
+                                </div>
+                            </div>
+                            <div id="auto-generate-options">
+                                <div class="mb-4">
+                                    <label for="num-questions" class="font-bold">總題數：</label>
+                                    <input type="number" id="num-questions" value="10" min="1" class="pop-input w-24 p-1 text-center">
+                                </div>
+                                <div class="mb-4" id="difficulty-selection-container">
+                                    <p class="font-bold" id="difficulty-title">難度偏好：</p>
+                                    <div class="flex space-x-4" id="difficulty-options">
+                                        <label><input type="checkbox" class="difficulty-pref" value="Easy" checked> 簡單</label>
+                                        <label><input type="checkbox" class="difficulty-pref" value="Medium" checked> 中等</label>
+                                        <label><input type="checkbox" class="difficulty-pref" value="Hard" checked> 困難</label>
+                                    </div>
+                                </div>
+                            </div>
+                         </div>
+                    </div>
+                    
+                    <div id="quiz-preview" class="mt-6 hidden">
+                         <h3 class="text-2xl font-black mb-2">練習題預覽</h3>
+                         <div id="quiz-preview-list" class="bg-white/80 backdrop-blur-sm p-4 border-2 border-dashed border-black rounded-lg max-h-96 overflow-y-auto">
+                            <!-- 預覽題目將顯示於此 -->
+                         </div>
+                         <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4">
+                            <button id="export-wordwall-btn" class="w-full pop-button bg-purple-400 hover:bg-purple-500 text-white py-2 rounded-lg">匯出 Wordwall</button>
+                            <button id="export-kahoot-btn" class="w-full pop-button bg-indigo-400 hover:bg-indigo-500 text-white py-2 rounded-lg">匯出 Kahoot!</button>
+                            <button id="export-publisher-btn" class="w-full pop-button bg-orange-400 hover:bg-orange-500 text-white py-2 rounded-lg">匯出書商格式</button>
+                            <button id="export-wayground-btn" class="w-full pop-button bg-teal-400 hover:bg-teal-500 text-white py-2 rounded-lg">匯出 Wayground</button>
+                            <button id="export-google-forms-btn" class="w-full pop-button bg-green-400 hover:bg-green-500 text-white py-2 rounded-lg">匯出 Google 表單</button>
+                            <button id="export-game-btn" class="w-full pop-button bg-pink-400 hover:bg-pink-500 text-white py-2 rounded-lg">下載遊戲 HTML</button>
+                         </div>
+                         <div class="mt-4 p-4 bg-blue-50 border-2 border-dashed border-blue-300 rounded-lg">
+                            <p class="text-sm font-bold text-blue-700 mb-2">💡 書商格式匯出提示：</p>
+                            <p class="text-sm text-gray-700 mb-2">匯出書商格式後，可直接到
+                                <a href="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/html%E7%94%9F%E6%88%90%E5%B7%A5%E5%85%B7%E9%9B%86%E5%90%88/html_textarea_chang.html"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   class="text-blue-600 font-bold underline hover:text-blue-800">
+                                   阿剛老師的HTML遊戲自訂內容工具
+                                </a>
+                                選擇「選擇題型的遊戲」直接貼上生成遊戲HTML。
+                            </p>
+                         </div>
+                         <div class="mt-4 p-4 bg-green-50 border-2 border-dashed border-green-300 rounded-lg">
+                            <p class="text-sm font-bold text-green-700 mb-2">📝 Google 表單匯出提示：</p>
+                            <p class="text-sm text-gray-700">匯出 Google 表單會產生 GAS 程式碼，請建立一個新的 Google 表單，進入指令碼編輯器貼上程式碼並執行，即可自動建立測驗表單。</p>
+                         </div>
+                    </div>
+                 </div>
+
+            </section>
+        </main>
+    </div>
+
+    <!-- 載入中 Modal -->
+    <div id="loading-modal" class="fixed inset-0 bg-black bg-opacity-70 flex flex-col items-center justify-center hidden z-100">
+        <div class="loader"></div>
+        <p id="loading-text" class="text-white text-2xl font-bold mt-6">AI 正在努力為您生成題目...</p>
+    </div>
+
+    <!-- 編輯題庫 Modal -->
+    <div id="edit-bank-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-4xl h-5/6 flex flex-col">
+            <h2 id="edit-modal-title" class="text-2xl font-black p-4 border-b-4 border-black">編輯題庫</h2>
+            <div id="edit-modal-content" class="p-6 overflow-y-auto flex-grow">
+                <!-- 編輯內容將動態生成於此 -->
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="edit-modal-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+                <button id="edit-modal-save" class="pop-button bg-green-400 hover:bg-green-500 px-6 py-2 rounded-lg">儲存變更</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批次新增題庫 Modal -->
+    <div id="add-questions-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-3xl flex flex-col max-h-[90vh]">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">批次建立新題庫</h2>
+            <div class="p-6 overflow-y-auto flex-grow space-y-4">
+                <div>
+                    <label for="new-bank-name" class="font-bold">新題庫名稱:</label>
+                    <input type="text" id="new-bank-name" class="w-full pop-input p-2 mt-1" placeholder="例如：國文第三課練習">
+                </div>
+                <div>
+                    <label for="new-question-category" class="font-bold">題目分類名稱:</label>
+                    <input type="text" id="new-question-category" class="w-full pop-input p-2 mt-1" placeholder="例如：形近字練習">
+                </div>
+                <div>
+                     <label for="new-question-type" class="font-bold">題目類型:</label>
+                     <select id="new-question-type" class="w-full pop-select p-2 mt-1">
+                        <option value="knowledge" selected>知識點 (簡單/中等/困難)</option>
+                        <option value="comprehension">閱讀理解 (PISA 四層次)</option>
+                     </select>
+                </div>
+                <div>
+                     <label for="new-question-difficulty" class="font-bold">設定難度/層次:</label>
+                     <select id="new-question-difficulty" class="w-full pop-select p-2 mt-1">
+                        <!-- Options will be populated by JS -->
+                     </select>
+                </div>
+                <div>
+                    <label for="batch-input-text" class="font-bold">貼上題目 (書商格式):</label>
+                    <textarea id="batch-input-text" class="w-full h-48 pop-textarea p-2 mt-1" placeholder="格式：題目(Tab)正確答案選項數字(Tab)選項A(Tab)選項B(Tab)選項C(Tab)選項D(Enter)"></textarea>
+                    <p class="text-sm text-gray-600 mt-1">每一行代表一題。請使用 Tab 鍵分隔每個欄位。</p>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="add-questions-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+                <button id="add-questions-save" class="pop-button bg-green-400 hover:bg-green-500 px-6 py-2 rounded-lg">建立題庫</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 手動選題 Modal -->
+    <div id="manual-select-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-4xl h-5/6 flex flex-col">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">手動選擇題目</h2>
+            <div id="manual-select-content" class="p-6 overflow-y-auto flex-grow">
+                <!-- 題目列表將動態生成於此 -->
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="manual-select-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+                <button id="manual-select-done" class="pop-button bg-blue-400 hover:bg-blue-500 px-6 py-2 rounded-lg">完成選題</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 設定 Modal -->
+    <div id="settings-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-2xl flex flex-col">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">AI 來源設定</h2>
+            <div class="p-6 overflow-y-auto flex-grow space-y-6">
+                <!-- AI Source Selection -->
+                <div>
+                    <label class="font-bold text-lg">選擇 AI 來源:</label>
+                    <div class="mt-2 space-y-2">
+                        <label class="flex items-center p-3 border-2 border-black rounded-lg has-[:checked]:bg-yellow-200 cursor-pointer">
+                            <input type="radio" name="ai-source" value="default" class="h-5 w-5 mr-3">
+                            <div>
+                                <p class="font-bold">預設 Gemini</p>
+                                <p class="text-sm text-gray-600">使用內建的 Gemini 模型，無需設定。</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center p-3 border-2 border-black rounded-lg has-[:checked]:bg-yellow-200 cursor-pointer">
+                            <input type="radio" name="ai-source" value="gemini_api" class="h-5 w-5 mr-3">
+                            <div>
+                                <p class="font-bold">Gemini API Key</p>
+                                <p class="text-sm text-gray-600">使用您自己的 Google AI Gemini API 金鑰。</p>
+                            </div>
+                        </label>
+                        <label class="flex items-center p-3 border-2 border-black rounded-lg has-[:checked]:bg-yellow-200 cursor-pointer">
+                            <input type="radio" name="ai-source" value="ollama" class="h-5 w-5 mr-3">
+                            <div>
+                                <p class="font-bold">本地 Ollama</p>
+                                <p class="text-sm text-gray-600">連接到您在本地運行的 Ollama 服務。</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Gemini API Key Section -->
+                <div id="gemini-api-settings" class="hidden pl-8">
+                    <label for="gemini-api-key" class="font-bold">您的 Gemini API Key:</label>
+                    <input type="password" id="gemini-api-key" class="w-full pop-input p-2 mt-1" placeholder="在此貼上您的 API Key">
+                </div>
+
+                <!-- Ollama Section -->
+                <div id="ollama-settings" class="hidden pl-8 space-y-4">
+                    <div>
+                        <label for="ollama-url" class="font-bold">Ollama URL:</label>
+                        <input type="text" id="ollama-url" class="w-full pop-input p-2 mt-1" placeholder="例如: http://localhost:11434">
+                    </div>
+                    <div>
+                        <label for="ollama-model" class="font-bold">選擇模型:</label>
+                        <div class="flex items-center gap-2 mt-1">
+                            <select id="ollama-model" class="pop-select p-2 w-full">
+                                <option value="">請先獲取模型列表</option>
+                            </select>
+                            <button id="fetch-ollama-models-btn" class="pop-button bg-blue-400 text-white px-4 py-2 rounded-lg flex-shrink-0">獲取</button>
+                        </div>
+                         <p id="ollama-status" class="text-sm text-gray-500 mt-1 h-4"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="settings-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+                <button id="settings-save" class="pop-button bg-green-400 hover:bg-green-500 px-6 py-2 rounded-lg">儲存設定</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 新增教材 Modal -->
+    <div id="material-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-4xl h-5/6 flex flex-col">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">新增教材</h2>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <!-- 頁籤 -->
+                <div class="flex mb-0">
+                    <button id="tab-upload" class="pop-tab active px-4 py-2 rounded-t-lg">上傳檔案</button>
+                    <button id="tab-paste" class="pop-tab px-4 py-2 rounded-t-lg">貼上文字</button>
+                    <button id="tab-library" class="pop-tab px-4 py-2 rounded-t-lg">教材庫</button>
+                </div>
+
+                <!-- 內容面板 -->
+                <div class="pop-tab-content p-4 bg-white rounded-b-lg rounded-r-lg">
+                    <!-- 上傳面板 -->
+                    <div id="content-upload">
+                        <p class="mb-4 text-gray-600">支援 PDF 或 .txt 純文字檔。</p>
+                        <input type="file" id="file-input" class="w-full pop-input p-2" accept=".pdf,.txt">
+                    </div>
+                    <!-- 貼上文字面板 -->
+                    <div id="content-paste" class="hidden">
+                         <p class="mb-2 text-gray-600">將您的教材文字貼在下方。</p>
+                        <textarea id="text-input" class="w-full h-48 pop-textarea p-2" placeholder="在此貼上文字..."></textarea>
+                    </div>
+                    <!-- 教材庫面板 -->
+                    <div id="content-library" class="hidden">
+                        <p class="mb-4 text-gray-600">選擇之前上傳過的教材，重新生成新的題庫。</p>
+                        <div id="material-list" class="space-y-2 max-h-64 overflow-y-auto">
+                            <!-- 教材列表將在這裡動態生成 -->
+                        </div>
+                        <p id="no-materials" class="text-gray-500 text-center py-8 hidden">目前沒有可用的教材。</p>
+                    </div>
+                </div>
+
+                <div class="mt-6">
+                    <label for="bank-name" class="font-bold text-lg">為這個教材命名：</label>
+                    <input type="text" id="bank-name" class="w-full pop-input p-2 mt-1" placeholder="例如：第一章重點整理">
+                </div>
+
+                <div class="mt-6 border-t-2 border-dashed border-gray-300 pt-4">
+                    <h3 class="font-bold text-lg mb-2">AI 生成設定</h3>
+                    <!-- AI Gen Tabs -->
+                    <div class="flex mb-0">
+                        <button id="tab-gen-knowledge" class="pop-tab active px-4 py-2 rounded-t-lg text-sm">知識點生成</button>
+                        <button id="tab-gen-comprehension" class="pop-tab px-4 py-2 rounded-t-lg text-sm">閱讀理解生成</button>
+                    </div>
+                    <!-- AI Gen Content -->
+                    <div class="pop-tab-content p-4 bg-white rounded-b-lg rounded-r-lg">
+                        <!-- 知識點生成 -->
+                        <div id="content-gen-knowledge">
+                            <div class="grid grid-cols-3 gap-4">
+                                <div class="text-center">
+                                    <label for="num-easy" class="font-bold text-green-600">簡單</label>
+                                    <input type="number" id="num-easy" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                                <div class="text-center">
+                                    <label for="num-medium" class="font-bold text-yellow-600">中等</label>
+                                    <input type="number" id="num-medium" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                                <div class="text-center">
+                                    <label for="num-hard" class="font-bold text-red-600">困難</label>
+                                    <input type="number" id="num-hard" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                            </div>
+                        </div>
+                        <!-- 閱讀理解生成 -->
+                        <div id="content-gen-comprehension" class="hidden">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div class="text-center">
+                                    <label for="num-comp-1" class="font-bold text-blue-600">提取訊息</label>
+                                    <input type="number" id="num-comp-1" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                                <div class="text-center">
+                                    <label for="num-comp-2" class="font-bold text-green-600">文意推論</label>
+                                    <input type="number" id="num-comp-2" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                                <div class="text-center">
+                                    <label for="num-comp-3" class="font-bold text-yellow-600">詮釋整合</label>
+                                    <input type="number" id="num-comp-3" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                                <div class="text-center">
+                                    <label for="num-comp-4" class="font-bold text-red-600">反思評價</label>
+                                    <input type="number" id="num-comp-4" value="5" min="0" class="pop-input w-full p-2 text-center mt-1">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="material-modal-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+                <button id="generate-btn" class="pop-button bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg">生成題庫</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 資料管理 Modal -->
+    <div id="data-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-2xl flex flex-col">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">資料管理</h2>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button id="import-data-btn" class="w-full pop-button bg-gray-200 hover:bg-gray-300 text-black py-3 rounded-lg text-lg">📥 新增題庫</button>
+                    <button id="export-data-btn" class="w-full pop-button bg-gray-700 hover:bg-gray-800 text-white py-3 rounded-lg text-lg">📤 匯出全部資料</button>
+                    <input type="file" id="import-file-input" class="hidden" accept=".json">
+                </div>
+                <div class="mt-4 p-3 bg-yellow-50 border-2 border-dashed border-yellow-300 rounded-lg">
+                    <p class="text-sm font-bold text-yellow-700 mb-1">💡 新增題庫說明：</p>
+                    <p class="text-sm text-gray-700">從JSON檔案匯入題庫，會自動與現有題庫比對內容，相同內容的題庫只會保留一個，避免重複。</p>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="data-modal-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 遊戲選擇 Modal -->
+    <div id="game-select-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-3xl flex flex-col max-h-[90vh]">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">選擇遊戲類型</h2>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <p class="text-gray-600 mb-4">請選擇要下載的遊戲類型，系統會自動將當前題庫填入遊戲中：</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4" id="game-options">
+                    <button class="game-option-btn pop-button bg-red-400 hover:bg-red-500 text-white p-4 rounded-lg text-left" data-game="car-game" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/car-game.html">
+                        <h3 class="font-bold text-lg">🏎️ 賽車遊戲</h3>
+                        <p class="text-sm opacity-90">在賽車的同時答題</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-blue-400 hover:bg-blue-500 text-white p-4 rounded-lg text-left" data-game="self-study" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/%E8%87%AA%E5%AD%B8%E8%A4%87%E7%BF%92%E6%B8%AC%E9%A9%97%E5%B7%A5%E5%85%B72.html">
+                        <h3 class="font-bold text-lg">📖 自學複習測驗</h3>
+                        <p class="text-sm opacity-90">基本的選擇題測驗</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-green-400 hover:bg-green-500 text-white p-4 rounded-lg text-left" data-game="quiz-online" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/%E9%81%B8%E6%93%87%E9%A1%8C%E9%81%8A%E6%88%B2-%E6%89%93%E6%80%AA%E5%8D%87%E7%B4%9A/%E6%89%93%E6%80%AA%E5%8D%87%E7%B4%9A%E9%81%8A%E6%88%B2-%E9%81%B8%E6%93%87%E9%A1%8C.html">
+                        <h3 class="font-bold text-lg">📝 打怪升級選擇題測驗</h3>
+                        <p class="text-sm opacity-90">答題打怪升級的遊戲</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-purple-400 hover:bg-purple-500 text-white p-4 rounded-lg text-left" data-game="cat-dog-war" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/%E9%9B%99%E4%BA%BA%E5%B0%8D%E6%88%B0-%E8%B2%93%E7%8B%97%E5%A4%A7%E6%88%B0-%E8%87%AA%E8%A3%BD%E9%A1%8C%E5%BA%AB.html">
+                        <h3 class="font-bold text-lg">🐱🐶 貓狗大戰</h3>
+                        <p class="text-sm opacity-90">雙人對戰答題遊戲</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-yellow-400 hover:bg-yellow-500 text-white p-4 rounded-lg text-left" data-game="brick-breaker" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/%E7%AD%94%E9%A1%8C%E6%89%93%E7%A3%9A%E5%A1%8AFinal.html">
+                        <h3 class="font-bold text-lg">🧱 答題打磚塊</h3>
+                        <p class="text-sm opacity-90">打磚塊同時答題</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-orange-400 hover:bg-orange-500 text-white p-4 rounded-lg text-left" data-game="big-screen" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/others/%E5%A4%A7%E5%B1%8F%E9%81%B8%E6%93%87%E9%A1%8C%E6%90%B6%E7%AD%94%E9%81%8A%E6%88%B2.html">
+                        <h3 class="font-bold text-lg">📺 大屏選擇題搶答</h3>
+                        <p class="text-sm opacity-90">適合課堂搶答</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-pink-400 hover:bg-pink-500 text-white p-4 rounded-lg text-left" data-game="fruit-ninja" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/紫蝶大屏測驗/index.html">
+                        <h3 class="font-bold text-lg">🥷 水果忍者搶答</h3>
+                        <p class="text-sm opacity-90">大屏二人搶答遊戲</p>
+                    </button>
+                    <button class="game-option-btn pop-button bg-indigo-400 hover:bg-indigo-500 text-white p-4 rounded-lg text-left" data-game="butterfly" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/蝴蝶飛遊戲/flappybutterfly.html">
+                        <h3 class="font-bold text-lg">🦋 紫蝶飛遊戲</h3>
+                        <p class="text-sm opacity-90">類似Flappy Bird的答題遊戲</p>
+                    </button>
+					<button class="game-option-btn pop-button bg-indigo-400 hover:bg-indigo-500 text-white p-4 rounded-lg text-left" data-game="butterfly" data-url="https://filedn.com/laMtL9jmKf7JrDEQG0A6OPy/html/選擇題遊戲-太空探險/太空探險.html">
+                        <h3 class="font-bold text-lg">太空探險遊戲</h3>
+                        <p class="text-sm opacity-90">太空探險的答題遊戲</p>
+                    </button>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="game-select-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Google Forms 生成程式碼 Modal -->
+    <div id="google-forms-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-4xl flex flex-col max-h-screen">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">Google 表單 GAS 程式碼</h2>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div class="bg-gray-100 p-4 border-2 border-dashed border-gray-300 rounded-lg font-mono text-sm text-gray-800 min-h-[300px] max-h-[400px] overflow-y-auto">
+                    <pre id="gas-code-content" class="whitespace-pre-wrap break-words"></pre>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="copy-gas-code-btn" class="pop-button bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg">複製程式碼</button>
+                <button id="gas-instructions-btn" class="pop-button bg-yellow-500 hover:bg-yellow-600 text-white px-6 py-2 rounded-lg">使用說明</button>
+                <button id="google-forms-modal-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- GAS 程式碼使用說明 Modal -->
+    <div id="gas-instructions-modal" class="modal-backdrop hidden items-center justify-center">
+        <div class="pop-card w-11/12 max-w-3xl flex flex-col max-h-screen">
+            <h2 class="text-2xl font-black p-4 border-b-4 border-black">GAS 程式碼使用說明</h2>
+            <div class="p-6 overflow-y-auto flex-grow">
+                <div class="bg-blue-50 p-4 border-2 border-dashed border-blue-300 rounded-lg">
+                    <p class="font-bold text-blue-700 mb-4">複製上述程式碼後，請按照以下步驟操作：</p>
+                    <ol class="list-decimal list-inside space-y-2 text-gray-700">
+                        <li><strong>開啟您的 Google 表單</strong>（您可以先建立一個空的表單）。</li>
+                        <li>點擊表單右上角的「更多」圖示（三個點），然後選擇「<strong>指令碼編輯器</strong>」。</li>
+                        <li>刪除編輯器中所有預設的程式碼。</li>
+                        <li>將您複製的程式碼貼到指令碼編輯器中。</li>
+                        <li>點擊<strong>儲存</strong>圖示（磁碟片形狀）。</li>
+                        <li>點擊<strong>執行</strong>圖示（播放三角形）。</li>
+                        <li>第一次執行時，Google 會要求您授權。請按照指示完成授權流程。</li>
+                        <li>程式執行完畢後，您的 Google 表單將自動新增生成的選擇題，並設定好答案與分數。</li>
+                        <li><strong>重要提示：</strong>請確保您執行的是新生成的函式名稱 <code>createQuizForm</code>。</li>
+                    </ol>
+                    <div class="mt-4 p-3 bg-yellow-50 border-2 border-dashed border-yellow-300 rounded-lg">
+                        <p class="font-bold text-yellow-700 mb-2">💡 其他重要提示：</p>
+                        <ul class="list-disc list-inside space-y-1 text-sm text-gray-700">
+                            <li>程式碼中的 <code>FormApp.getActiveForm()</code> 會自動綁定到您當前開啟的表單。</li>
+                            <li>您可以根據需求修改 <code>pointsPerQuestion</code> 的值來調整每題分數。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="p-4 border-t-4 border-black flex justify-end space-x-4 bg-gray-100">
+                <button id="gas-instructions-modal-cancel" class="pop-button bg-gray-300 hover:bg-gray-400 px-6 py-2 rounded-lg">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    const app = {
+        db: null,
+        questionBanks: [],
+        selectedBankIds: new Set(),
+        currentQuiz: [],
+        editingBankId: null,
+        settings: {
+            aiSource: 'default', // 'default', 'gemini_api', 'ollama'
+            geminiApiKey: '',
+            ollamaUrl: 'http://localhost:11434',
+            ollamaModel: ''
+        },
+
+        init() {
+            if (window.pdfjsLib) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            }
+            this.loadSettings();
+            this.initDB();
+            this.addEventListeners();
+        },
+
+        initDB() {
+            const request = indexedDB.open('QuizGeneratorDB', 1);
+            request.onerror = (event) => console.error("Database error: " + event.target.errorCode);
+            request.onsuccess = (event) => {
+                this.db = event.target.result;
+                this.loadBanksFromDB();
+            };
+            request.onupgradeneeded = (event) => {
+                let db = event.target.result;
+                let objectStore = db.createObjectStore("questionBanks", { keyPath: "id" });
+                objectStore.createIndex("name", "name", { unique: false });
+            };
+        },
+
+        addEventListeners() {
+            document.getElementById('tab-upload').addEventListener('click', () => this.switchTab('upload'));
+            document.getElementById('tab-paste').addEventListener('click', () => this.switchTab('paste'));
+            document.getElementById('tab-library').addEventListener('click', () => this.switchTab('library'));
+            document.getElementById('generate-btn').addEventListener('click', () => this.handleGenerateClick());
+            
+            // AI Gen Tabs
+            document.getElementById('tab-gen-knowledge').addEventListener('click', () => this.switchAIGenTab('knowledge'));
+            document.getElementById('tab-gen-comprehension').addEventListener('click', () => this.switchAIGenTab('comprehension'));
+
+            // 生成練習題按鈕
+            document.getElementById('generate-quiz-btn-auto').addEventListener('click', () => this.generatePracticeQuiz('auto'));
+            document.getElementById('generate-quiz-btn-manual').addEventListener('click', () => this.generatePracticeQuiz('manual'));
+            
+            // 匯出按鈕
+            document.getElementById('export-wordwall-btn').addEventListener('click', () => this.exportQuiz('wordwall'));
+            document.getElementById('export-kahoot-btn').addEventListener('click', () => this.exportQuiz('kahoot'));
+            document.getElementById('export-publisher-btn').addEventListener('click', () => this.exportQuiz('publisher'));
+            document.getElementById('export-wayground-btn').addEventListener('click', () => this.exportQuiz('wayground'));
+            document.getElementById('export-google-forms-btn').addEventListener('click', () => this.exportGoogleForms());
+            document.getElementById('export-game-btn').addEventListener('click', () => this.openGameSelectModal());
+
+            // 資料管理
+            document.getElementById('export-data-btn').addEventListener('click', () => this.exportAllData());
+            document.getElementById('import-data-btn').addEventListener('click', () => document.getElementById('import-file-input').click());
+            document.getElementById('import-file-input').addEventListener('change', (event) => this.importAllData(event));
+
+            // Modal 按鈕
+            document.getElementById('edit-modal-cancel').addEventListener('click', () => this.closeEditModal());
+            document.getElementById('edit-modal-save').addEventListener('click', () => this.saveBankEdits());
+            document.getElementById('manual-select-cancel').addEventListener('click', () => this.closeManualSelectModal());
+            document.getElementById('manual-select-done').addEventListener('click', () => this.generateManualQuiz());
+
+            // 手動新增題目 Modal 按鈕
+            document.getElementById('add-questions-cancel').addEventListener('click', () => this.closeAddQuestionsModal());
+            document.getElementById('add-questions-save').addEventListener('click', () => this.saveNewQuestions());
+            document.getElementById('new-question-type').addEventListener('change', () => this.updateDifficultyOptions());
+
+            // 新的主按鈕
+            document.getElementById('open-material-modal').addEventListener('click', () => this.openMaterialModal());
+            document.getElementById('open-batch-add-modal').addEventListener('click', () => this.openAddQuestionsModal());
+            document.getElementById('open-data-modal').addEventListener('click', () => this.openDataModal());
+
+            // 新增教材 Modal 按鈕
+            document.getElementById('material-modal-cancel').addEventListener('click', () => this.closeMaterialModal());
+
+            // 資料管理 Modal 按鈕
+            document.getElementById('data-modal-cancel').addEventListener('click', () => this.closeDataModal());
+
+            // 遊戲選擇 Modal 按鈕
+            document.getElementById('game-select-cancel').addEventListener('click', () => this.closeGameSelectModal());
+
+            // Google Forms Modal 按鈕
+            document.getElementById('google-forms-modal-cancel').addEventListener('click', () => this.closeGoogleFormsModal());
+            document.getElementById('copy-gas-code-btn').addEventListener('click', () => this.copyGasCode());
+            document.getElementById('gas-instructions-btn').addEventListener('click', () => this.openGasInstructionsModal());
+            document.getElementById('gas-instructions-modal-cancel').addEventListener('click', () => this.closeGasInstructionsModal());
+
+            // 設定 Modal 按鈕
+            document.getElementById('settings-btn').addEventListener('click', () => this.openSettingsModal());
+            document.getElementById('settings-cancel').addEventListener('click', () => this.closeSettingsModal());
+            document.getElementById('settings-save').addEventListener('click', () => this.handleSaveSettings());
+            document.querySelectorAll('input[name="ai-source"]').forEach(radio => {
+                radio.addEventListener('change', () => this.updateSettingsUI());
+            });
+            document.getElementById('fetch-ollama-models-btn').addEventListener('click', () => this.fetchOllamaModels());
+
+            // 檔案上傳自動填入名稱
+            document.getElementById('file-input').addEventListener('change', (event) => this.handleFileUpload(event));
+        },
+        
+        loadSettings() {
+            const savedSettings = localStorage.getItem('aiQuizGeneratorSettings');
+            if (savedSettings) {
+                this.settings = JSON.parse(savedSettings);
+            }
+        },
+
+        handleSaveSettings() {
+            this.settings.aiSource = document.querySelector('input[name="ai-source"]:checked').value;
+            this.settings.geminiApiKey = document.getElementById('gemini-api-key').value.trim();
+            this.settings.ollamaUrl = document.getElementById('ollama-url').value.trim();
+            this.settings.ollamaModel = document.getElementById('ollama-model').value;
+            localStorage.setItem('aiQuizGeneratorSettings', JSON.stringify(this.settings));
+            alert('設定已儲存！');
+            this.closeSettingsModal();
+        },
+        
+        openSettingsModal() {
+            document.querySelector(`input[name="ai-source"][value="${this.settings.aiSource}"]`).checked = true;
+            document.getElementById('gemini-api-key').value = this.settings.geminiApiKey;
+            document.getElementById('ollama-url').value = this.settings.ollamaUrl;
+            
+            const modelSelect = document.getElementById('ollama-model');
+            modelSelect.innerHTML = `<option value="">請先獲取模型列表</option>`;
+            if (this.settings.aiSource === 'ollama' && this.settings.ollamaModel) {
+                modelSelect.innerHTML = `<option value="${this.settings.ollamaModel}" selected>${this.settings.ollamaModel}</option>`;
+            }
+
+            this.updateSettingsUI();
+            document.getElementById('settings-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeSettingsModal() {
+            document.getElementById('settings-modal').classList.replace('flex', 'hidden');
+        },
+
+        updateSettingsUI() {
+            const source = document.querySelector('input[name="ai-source"]:checked').value;
+            document.getElementById('gemini-api-settings').classList.toggle('hidden', source !== 'gemini_api');
+            document.getElementById('ollama-settings').classList.toggle('hidden', source !== 'ollama');
+        },
+
+        handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                // 取得檔案名稱，去除副檔名
+                const fileName = file.name.replace(/\.[^/.]+$/, '');
+                const bankNameInput = document.getElementById('bank-name');
+
+                // 如果名稱欄位為空，自動填入檔案名稱
+                if (!bankNameInput.value.trim()) {
+                    bankNameInput.value = fileName;
+                }
+            }
+        },
+
+        async fetchOllamaModels() {
+            const url = document.getElementById('ollama-url').value.trim();
+            if (!url) {
+                alert('請先輸入 Ollama URL。');
+                return;
+            }
+            const statusEl = document.getElementById('ollama-status');
+            const selectEl = document.getElementById('ollama-model');
+            statusEl.textContent = '正在獲取模型...';
+            selectEl.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${url}/api/tags`);
+                if (!response.ok) throw new Error(`伺服器回應錯誤: ${response.status}`);
+                const data = await response.json();
+                
+                if (!data.models || data.models.length === 0) {
+                    statusEl.textContent = '找不到任何模型。';
+                    selectEl.innerHTML = '<option value="">找不到模型</option>';
+                    return;
+                }
+
+                data.models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model.name;
+                    option.textContent = model.name;
+                    selectEl.appendChild(option);
+                });
+                
+                if(this.settings.ollamaModel) {
+                    selectEl.value = this.settings.ollamaModel;
+                }
+
+                statusEl.textContent = `成功找到 ${data.models.length} 個模型！`;
+
+            } catch (error) {
+                console.error("Fetch Ollama Models Error:", error);
+                statusEl.textContent = `獲取失敗: ${error.message}`;
+                selectEl.innerHTML = '<option value="">獲取失敗</option>';
+            }
+        },
+
+        switchTab(tab) {
+            const contentUpload = document.getElementById('content-upload');
+            const contentPaste = document.getElementById('content-paste');
+            const contentLibrary = document.getElementById('content-library');
+            const tabUpload = document.getElementById('tab-upload');
+            const tabPaste = document.getElementById('tab-paste');
+            const tabLibrary = document.getElementById('tab-library');
+
+            // 隱藏所有內容面板
+            contentUpload.classList.add('hidden');
+            contentPaste.classList.add('hidden');
+            contentLibrary.classList.add('hidden');
+
+            // 移除所有選項卡的 active 狀態
+            tabUpload.classList.remove('active');
+            tabPaste.classList.remove('active');
+            tabLibrary.classList.remove('active');
+
+            // 顯示選中的內容面板和設置對應選項卡為 active
+            if (tab === 'upload') {
+                contentUpload.classList.remove('hidden');
+                tabUpload.classList.add('active');
+            } else if (tab === 'paste') {
+                contentPaste.classList.remove('hidden');
+                tabPaste.classList.add('active');
+            } else if (tab === 'library') {
+                contentLibrary.classList.remove('hidden');
+                tabLibrary.classList.add('active');
+                this.loadMaterialLibrary(); // 載入教材庫
+            }
+        },
+
+        switchAIGenTab(tab) {
+            const contentKnowledge = document.getElementById('content-gen-knowledge');
+            const contentComprehension = document.getElementById('content-gen-comprehension');
+            const tabKnowledge = document.getElementById('tab-gen-knowledge');
+            const tabComprehension = document.getElementById('tab-gen-comprehension');
+
+            if (tab === 'knowledge') {
+                contentKnowledge.classList.remove('hidden');
+                contentComprehension.classList.add('hidden');
+                tabKnowledge.classList.add('active');
+                tabComprehension.classList.remove('active');
+            } else {
+                contentKnowledge.classList.add('hidden');
+                contentComprehension.classList.remove('hidden');
+                tabKnowledge.classList.remove('active');
+                tabComprehension.classList.add('active');
+            }
+        },
+        
+        showLoading(message) {
+            document.getElementById('loading-text').textContent = message;
+            document.getElementById('loading-modal').classList.remove('hidden');
+        },
+        
+        hideLoading() {
+            document.getElementById('loading-modal').classList.add('hidden');
+        },
+
+        async handleGenerateClick() {
+            const bankName = document.getElementById('bank-name').value.trim();
+            if (!bankName) {
+                alert('請為您的教材命名！');
+                return;
+            }
+
+            let textContent = '';
+            const fileInput = document.getElementById('file-input').files[0];
+            const textInput = document.getElementById('text-input').value.trim();
+
+            // 立即關閉新增教材 Modal
+            this.closeMaterialModal();
+
+            this.showLoading('正在讀取與分析內容...');
+
+            try {
+                if (fileInput) {
+                    if (fileInput.type === 'application/pdf') {
+                        textContent = await this.readPdf(fileInput);
+                    } else if (fileInput.type === 'text/plain') {
+                        textContent = await this.readFileAsText(fileInput);
+                    } else {
+                        throw new Error('不支援的檔案格式。');
+                    }
+                } else if (textInput) {
+                    textContent = textInput;
+                } else {
+                    throw new Error('請提供教材內容！');
+                }
+
+                if (textContent.length < 50) {
+                     throw new Error('內容太短，請提供至少50個字元。');
+                }
+                
+                const genMode = document.getElementById('tab-gen-knowledge').classList.contains('active') ? 'knowledge' : 'comprehension';
+                
+                let genParams = {};
+                if (genMode === 'knowledge') {
+                    genParams = {
+                        easy: document.getElementById('num-easy').value,
+                        medium: document.getElementById('num-medium').value,
+                        hard: document.getElementById('num-hard').value,
+                    };
+                } else {
+                    genParams = {
+                        level1: document.getElementById('num-comp-1').value,
+                        level2: document.getElementById('num-comp-2').value,
+                        level3: document.getElementById('num-comp-3').value,
+                        level4: document.getElementById('num-comp-4').value,
+                    };
+                }
+
+                this.showLoading('內容分析完成，正在呼叫 AI 生成題目...');
+                const aiResponse = await this.callAIAPI(textContent, genMode, genParams);
+                
+                const newBank = {
+                    id: `bank-${Date.now()}`,
+                    name: bankName,
+                    sourceText: textContent,
+                    ...aiResponse
+                };
+                
+                this.saveBankToDB(newBank, true);
+
+            } catch (error) {
+                console.error("Generation Error:", error);
+                alert(`發生錯誤：${error.message}`);
+            } finally {
+                this.hideLoading();
+            }
+        },
+
+        async callAIAPI(text, genMode, genParams) {
+            switch (this.settings.aiSource) {
+                case 'gemini_api':
+                    return this.callGemini(text, genMode, genParams);
+                case 'ollama':
+                    return this.callOllama(text, genMode, genParams);
+                case 'default':
+                default:
+                    return this.callGemini(text, genMode, genParams);
+            }
+        },
+
+        async callGemini(text, genMode, genParams) {
+            let apiKey = "";
+            if (this.settings.aiSource === 'gemini_api') {
+                apiKey = this.settings.geminiApiKey;
+                if (!apiKey) {
+                    throw new Error('尚未設定 Gemini API Key。請在設定中輸入。');
+                }
+            }
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+            let systemPrompt = '';
+
+            if (genMode === 'knowledge') {
+                systemPrompt = `你是一個專業的教育內容產生器。請根據使用者提供的文本內容，執行以下任務：
+
+**任務說明：**
+1. 仔細分析提供的文本內容，包括但不限於：知識點講解、概念介紹、定義說明、案例分析、操作步驟等。
+2. 根據文本的主題和內容特性，將其歸納成2-5個主要類別或知識模組。
+3. 基於文本內容生成高品質的單選選擇題，數量分配如下：
+   - 簡單 (Easy): ${genParams.easy} 題 - 主要測試基本概念理解和記憶
+   - 中等 (Medium): ${genParams.medium} 題 - 測試概念應用和理解
+   - 困難 (Hard): ${genParams.hard} 題 - 測試深度分析和綜合判斷
+
+**題目生成要求：**
+- 每題必須有4個選項，其中只有1個正確答案
+- 題目內容必須完全基於提供的文本，不可添加文本外的資訊
+- 選項設計要具有迷惑性，避免過於明顯的錯誤選項
+- 題目用詞要清晰準確，避免歧義
+- 如果文本內容不足以生成指定數量的某難度題目，請調整到其他難度或減少總題數
+
+**輸出格式：**
+嚴格按照 JSON 格式回傳，不包含任何程式碼標記或額外文字。'difficulty' 欄位必須使用：'Easy', 'Medium', 'Hard'。`;
+            } else {
+                systemPrompt = `你是一個專業的閱讀理解測驗設計專家，熟悉 PISA 國際學生能力評量標準。請根據使用者提供的文本內容，執行以下任務：
+
+**文本分析：**
+1. 深入分析提供的文本內容，包括：文章結構、主要論點、支持證據、作者觀點、文本類型（說明文、議論文、記敘文等）。
+2. 根據文本的主題和段落結構，將內容歸納成2-5個主要類別或閱讀重點。
+
+**題目生成標準（基於 PISA 四層次）：**
+- **提取訊息 (${genParams.level1} 題)**：直接從文本中找到明確陳述的資訊、事實、數據或細節
+- **文意推論 (${genParams.level2} 題)**：根據文本內容進行邏輯推理，理解隱含意義或因果關係
+- **詮釋整合 (${genParams.level3} 題)**：整合文本不同部分的資訊，理解整體意義和結構關係
+- **反思評價 (${genParams.level4} 題)**：評判文本內容的可信度、邏輯性，或與外部知識的連結
+
+**題目設計要求：**
+- 每題4個選項，答案唯一且明確
+- 選項設計要符合該層次的認知要求
+- 干擾選項要合理但可辨別
+- 題目語言要適合目標讀者
+- 嚴格基於文本內容，不可超出文本範圍
+- 如內容不足，優先保證題目品質而非數量
+
+**輸出要求：**
+回傳標準 JSON 格式，'difficulty' 欄位使用：'提取訊息', '文意推論', '詮釋整合', '反思評價'。`;
+            }
+            const payload = {
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ parts: [{ text: `請分析這段文本：\n\n${text}` }] }],
+                generationConfig: {
+                    responseMimeType: "application/json",
+                    responseSchema: {
+                        type: "OBJECT",
+                        properties: {
+                            categories: {
+                                type: "ARRAY",
+                                items: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        name: { type: "STRING" },
+                                        questions: {
+                                            type: "ARRAY",
+                                            items: {
+                                                type: "OBJECT",
+                                                properties: {
+                                                    questionText: { type: "STRING" },
+                                                    options: { type: "ARRAY", items: { type: "STRING" } },
+                                                    correctAnswerIndex: { type: "NUMBER" },
+                                                    difficulty: { 
+                                                        type: "STRING", 
+                                                        enum: ["Easy", "Medium", "Hard", "提取訊息", "文意推論", "詮釋整合", "反思評價"] 
+                                                    }
+                                                },
+                                                required: ["questionText", "options", "correctAnswerIndex", "difficulty"]
+                                            }
+                                        }
+                                    },
+                                    required: ["name", "questions"]
+                                }
+                            }
+                        },
+                        required: ["categories"]
+                    }
+                }
+            };
+            let response;
+            let retryCount = 0;
+            const maxRetries = 3;
+
+            while (retryCount <= maxRetries) {
+                try {
+                    response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.ok) {
+                        break; // 成功，跳出重試循環
+                    }
+
+                    if (response.status === 503 && retryCount < maxRetries) {
+                        // 503 服務不可用，等待後重試
+                        const waitTime = Math.pow(2, retryCount) * 1000; // 指數退避: 1s, 2s, 4s
+                        console.warn(`AI API 服務暫時不可用 (503)，${waitTime/1000}秒後重試...`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                        retryCount++;
+                        continue;
+                    }
+
+                    // 其他錯誤或達到最大重試次數
+                    throw new Error(`AI API 請求失敗，狀態碼：${response.status}${response.status === 503 ? '，服務暫時不可用，請稍後再試' : ''}`);
+
+                } catch (error) {
+                    if (error.name === 'TypeError' && retryCount < maxRetries) {
+                        // 網路錯誤，重試
+                        const waitTime = Math.pow(2, retryCount) * 1000;
+                        console.warn(`網路連線失敗，${waitTime/1000}秒後重試...`);
+                        await new Promise(resolve => setTimeout(resolve, waitTime));
+                        retryCount++;
+                        continue;
+                    }
+                    throw error;
+                }
+            }
+            const result = await response.json();
+            const candidate = result.candidates?.[0];
+            if (!candidate || !candidate.content?.parts?.[0]?.text) {
+                throw new Error("AI 回應格式不正確或為空。");
+            }
+            try {
+                const cleanedText = candidate.content.parts[0].text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+                return JSON.parse(cleanedText);
+            } catch (e) {
+                throw new Error("無法解析 AI 回傳的 JSON 資料。");
+            }
+        },
+
+        async callOllama(text, genMode, genParams) {
+            const { ollamaUrl, ollamaModel } = this.settings;
+            if (!ollamaUrl || !ollamaModel) {
+                throw new Error('尚未設定 Ollama URL 或選擇模型。');
+            }
+            const apiUrl = `${ollamaUrl}/api/generate`;
+            let systemPrompt = '';
+            if (genMode === 'knowledge') {
+                systemPrompt = `你是一個專業的教育內容產生器。你的任務是根據提供的文本生成指定數量的JSON格式選擇題。請遵循以下規則：1. 自動將文本內容歸納成數個主要類別。2. 根據以下指定數量，生成不同難度的單選選擇題： - 簡單 (Easy): ${genParams.easy} 題, - 中等 (Medium): ${genParams.medium} 題, - 困難 (Hard): ${genParams.hard} 題。3. 每個問題必須有四個選項和一個正確答案索引。4. 所有內容必須完全基於提供的文本。5. 在 'difficulty' 欄位中，必須使用 'Easy', 'Medium', 或 'Hard'。6. 你的回答必須是單一且格式正確的JSON物件，不要有任何額外的文字。`;
+            } else {
+                systemPrompt = `你是一個專業的教育內容產生器，專長是PISA閱讀理解題目設計。你的任務是根據提供的文本生成指定數量的JSON格式選擇題。請遵循以下規則：1. 自動將文本內容歸納成數個主要類別。2. 根據PISA閱讀理解四個層次及以下數量出題： - 提取訊息: ${genParams.level1} 題, - 文意推論: ${genParams.level2} 題, - 詮釋整合: ${genParams.level3} 題, - 反思評價: ${genParams.level4} 題。3. 每個問題必須有四個選項和一個正確答案索引。4. 所有內容必須完全基於提供的文本。5. 在 'difficulty' 欄位中，必須使用對應的層次名稱。6. 你的回答必須是單一且格式正確的JSON物件，不要有任何額外的文字。`;
+            }
+
+            const fullPrompt = `${systemPrompt}\n\n文本內容如下：\n\`\`\`\n${text}\n\`\`\`\n請生成 JSON：`;
+            
+            const payload = {
+                model: ollamaModel,
+                prompt: fullPrompt,
+                format: "json",
+                stream: false
+            };
+            const response = await fetch(apiUrl, { method: 'POST', body: JSON.stringify(payload) });
+            if (!response.ok) {
+                throw new Error(`Ollama API 請求失敗，狀態碼：${response.status}`);
+            }
+            const result = await response.json();
+            if (!result.response) {
+                throw new Error("Ollama 回應格式不正確或為空。");
+            }
+            try {
+                const cleanedText = result.response.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+                return JSON.parse(cleanedText);
+            } catch (e) {
+                throw new Error("無法解析 Ollama 回傳的 JSON 資料。");
+            }
+        },
+
+        async readFileAsText(file) { return new Promise((resolve, reject)=>{const reader=new FileReader();reader.onload=event=>resolve(event.target.result);reader.onerror=error=>reject(error);reader.readAsText(file);});},
+        async readPdf(file) { const reader=new FileReader();return new Promise((resolve,reject)=>{reader.onload=async(event)=>{const typedarray=new Uint8Array(event.target.result);try{const pdf=await pdfjsLib.getDocument(typedarray).promise;let text='';for(let i=1;i<=pdf.numPages;i++){const page=await pdf.getPage(i);const content=await page.getTextContent();text+=content.items.map(item=>item.str).join(' ')+'\n';}
+resolve(text);}catch(error){reject('無法解析 PDF 檔案：'+error.message);}};reader.onerror=reject;reader.readAsArrayBuffer(file);});},
+
+        saveBankToDB(bank, isNew = false) {
+            const transaction = this.db.transaction(["questionBanks"], "readwrite");
+            const objectStore = transaction.objectStore("questionBanks");
+            const request = objectStore.put(bank);
+            request.onsuccess = () => {
+                if (isNew) this.loadBanksFromDB();
+            };
+            request.onerror = (event) => console.error("Error saving bank to DB:", event.target.errorCode);
+        },
+
+        loadBanksFromDB() {
+            this.questionBanks = [];
+            const objectStore = this.db.transaction("questionBanks").objectStore("questionBanks");
+            objectStore.openCursor().onsuccess = (event) => {
+                const cursor = event.target.result;
+                if (cursor) {
+                    this.questionBanks.push(cursor.value);
+                    cursor.continue();
+                } else {
+                    this.renderBankList();
+                }
+            };
+        },
+        
+        deleteBank(id) {
+            if (!confirm("確定要刪除這個題庫嗎？")) return;
+            const request = this.db.transaction(["questionBanks"], "readwrite").objectStore("questionBanks").delete(id);
+            request.onsuccess = () => {
+                this.selectedBankIds.delete(id);
+                this.loadBanksFromDB();
+            };
+        },
+
+        renderBankList() {
+            const listEl = document.getElementById('bank-list');
+            listEl.innerHTML = this.questionBanks.length === 0 ? '<p class="text-gray-500">尚未建立任何題庫。</p>' : '';
+            if (this.questionBanks.length === 0) {
+                this.updateQuizButtonState();
+                return;
+            }
+
+            this.questionBanks.forEach(bank => {
+                const totalQuestions = (bank.categories || []).reduce((acc, cat) => acc + (cat.questions || []).length, 0);
+                const bankType = this.detectBankType(bank);
+
+                // 設定題庫類型的顯示資訊
+                let typeInfo = { text: '未知類型', color: 'bg-gray-400', icon: '❓' };
+                if (bankType === 'knowledge') {
+                    typeInfo = { text: '知識點', color: 'bg-blue-400', icon: '📚' };
+                } else if (bankType === 'comprehension') {
+                    typeInfo = { text: '閱讀理解', color: 'bg-green-400', icon: '📖' };
+                }
+
+                const bankEl = document.createElement('div');
+                bankEl.className = 'p-3 bg-white border-2 border-black rounded-lg flex items-center justify-between gap-2';
+                bankEl.innerHTML = `
+                    <div class="flex items-center flex-grow">
+                        <input type="checkbox" data-id="${bank.id}" class="bank-checkbox h-5 w-5 mr-3 flex-shrink-0" ${this.selectedBankIds.has(bank.id) ? 'checked' : ''}>
+                        <div class="truncate">
+                            <div class="flex items-center gap-2 mb-1">
+                                <p class="font-bold truncate">${bank.name}</p>
+                                <span class="text-xs font-bold text-white px-2 py-1 rounded border border-black ${typeInfo.color}" style="box-shadow: 2px 2px 0 0 #000;">
+                                    ${typeInfo.icon} ${typeInfo.text}
+                                </span>
+                            </div>
+                            <p class="text-sm text-gray-500">${(bank.categories || []).length} 個分類, ${totalQuestions} 題</p>
+                        </div>
+                    </div>
+                    <div class="flex-shrink-0 flex gap-2">
+                        <button data-id="${bank.id}" class="edit-bank-btn text-sm pop-button bg-yellow-200 hover:bg-yellow-300 px-2 py-1 rounded">預覽/編輯</button>
+                        <button data-id="${bank.id}" class="delete-bank-btn pop-button bg-red-400 hover:bg-red-500 text-white font-bold w-8 h-8 rounded">X</button>
+                    </div>
+                `;
+                listEl.appendChild(bankEl);
+            });
+
+            this.updateQuizButtonState();
+            this.updateOtherBankStates();
+
+            document.querySelectorAll('.bank-checkbox').forEach(cb => cb.addEventListener('change', (e) => {
+                const id = e.target.dataset.id;
+                const bank = this.questionBanks.find(b => b.id === id);
+
+                if (e.target.checked) {
+                    // 檢查是否可以添加這個題庫
+                    if (this.canSelectBank(bank)) {
+                        this.selectedBankIds.add(id);
+                        this.updateOtherBankStates();
+                    } else {
+                        // 不能選擇，取消勾選
+                        e.target.checked = false;
+                        const selectedTypes = this.getSelectedBankTypes();
+                        const bankType = this.detectBankType(bank);
+                        const typeNames = {
+                            'knowledge': '知識點題庫',
+                            'comprehension': '閱讀理解題庫'
+                        };
+
+                        if (selectedTypes.size > 0) {
+                            const selectedTypeName = typeNames[Array.from(selectedTypes)[0]];
+                            const attemptTypeName = typeNames[bankType];
+                            alert(`無法同時選擇不同類型的題庫！\n目前已選：${selectedTypeName}\n嘗試選擇：${attemptTypeName}\n\n請先取消其他類型的題庫選擇。`);
+                        }
+                    }
+                } else {
+                    this.selectedBankIds.delete(id);
+                    this.updateOtherBankStates();
+                }
+                this.updateQuizButtonState();
+            }));
+            document.querySelectorAll('.delete-bank-btn').forEach(btn => btn.addEventListener('click', (e) => this.deleteBank(e.target.dataset.id)));
+            document.querySelectorAll('.edit-bank-btn').forEach(btn => btn.addEventListener('click', (e) => this.openEditModal(e.target.dataset.id)));
+        },
+
+        // 檢查是否可以選擇指定題庫
+        canSelectBank(bank) {
+            const selectedTypes = this.getSelectedBankTypes();
+            const bankType = this.detectBankType(bank);
+
+            // 如果沒有選擇任何題庫，可以選擇
+            if (selectedTypes.size === 0) return true;
+
+            // 如果題庫類型無法檢測，不允許選擇
+            if (!bankType) return false;
+
+            // 如果已選擇的題庫類型與當前題庫類型相同，可以選擇
+            return selectedTypes.has(bankType);
+        },
+
+        // 更新其他題庫的可選狀態
+        updateOtherBankStates() {
+            const selectedTypes = this.getSelectedBankTypes();
+
+            document.querySelectorAll('.bank-checkbox').forEach(cb => {
+                const id = cb.dataset.id;
+                const bank = this.questionBanks.find(b => b.id === id);
+                const bankType = this.detectBankType(bank);
+
+                // 如果沒有選擇任何題庫，所有題庫都可選
+                if (selectedTypes.size === 0) {
+                    cb.disabled = false;
+                    cb.parentElement.parentElement.style.opacity = '1';
+                    return;
+                }
+
+                // 如果已經選中，保持可用
+                if (cb.checked) {
+                    cb.disabled = false;
+                    cb.parentElement.parentElement.style.opacity = '1';
+                    return;
+                }
+
+                // 如果類型不匹配，禁用
+                if (!bankType || !selectedTypes.has(bankType)) {
+                    cb.disabled = true;
+                    cb.parentElement.parentElement.style.opacity = '0.5';
+                } else {
+                    cb.disabled = false;
+                    cb.parentElement.parentElement.style.opacity = '1';
+                }
+            });
+        },
+
+        // 檢測題庫類型（根據難度標籤判斷）
+        detectBankType(bank) {
+            if (!bank.categories || bank.categories.length === 0) return null;
+
+            // 檢查第一個有題目的分類中的第一個題目的難度
+            for (const category of bank.categories) {
+                if (category.questions && category.questions.length > 0) {
+                    const difficulty = category.questions[0].difficulty;
+                    if (['Easy', 'Medium', 'Hard'].includes(difficulty)) {
+                        return 'knowledge';
+                    } else if (['提取訊息', '文意推論', '詮釋整合', '反思評價'].includes(difficulty)) {
+                        return 'comprehension';
+                    }
+                }
+            }
+            return null;
+        },
+
+        // 獲取已選題庫的類型
+        getSelectedBankTypes() {
+            const types = new Set();
+            this.questionBanks.forEach(bank => {
+                if (this.selectedBankIds.has(bank.id)) {
+                    const type = this.detectBankType(bank);
+                    if (type) types.add(type);
+                }
+            });
+            return types;
+        },
+
+        // 更新難度選擇UI
+        updateDifficultySelectionUI() {
+            const selectedTypes = this.getSelectedBankTypes();
+            const titleElement = document.getElementById('difficulty-title');
+            const optionsElement = document.getElementById('difficulty-options');
+
+            if (!titleElement || !optionsElement) return;
+
+            if (selectedTypes.size === 0) {
+                // 沒有選擇題庫，顯示預設的知識點選項
+                titleElement.textContent = '難度偏好：';
+                optionsElement.innerHTML = `
+                    <label><input type="checkbox" class="difficulty-pref" value="Easy" checked> 簡單</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="Medium" checked> 中等</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="Hard" checked> 困難</label>
+                `;
+                return;
+            }
+
+            if (selectedTypes.has('comprehension')) {
+                // 閱讀理解類型，顯示四層次
+                titleElement.textContent = '層次偏好：';
+                optionsElement.innerHTML = `
+                    <label><input type="checkbox" class="difficulty-pref" value="提取訊息" checked> 提取訊息</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="文意推論" checked> 文意推論</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="詮釋整合" checked> 詮釋整合</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="反思評價" checked> 反思評價</label>
+                `;
+            } else {
+                // 知識點類型，顯示三難度
+                titleElement.textContent = '難度偏好：';
+                optionsElement.innerHTML = `
+                    <label><input type="checkbox" class="difficulty-pref" value="Easy" checked> 簡單</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="Medium" checked> 中等</label>
+                    <label><input type="checkbox" class="difficulty-pref" value="Hard" checked> 困難</label>
+                `;
+            }
+        },
+
+        updateQuizButtonState() {
+            const disabled = this.selectedBankIds.size === 0;
+            document.getElementById('generate-quiz-btn-auto').disabled = disabled;
+            document.getElementById('generate-quiz-btn-manual').disabled = disabled;
+
+            // 更新難度選擇UI
+            this.updateDifficultySelectionUI();
+        },
+
+        generatePracticeQuiz(mode) {
+            if (this.selectedBankIds.size === 0) return alert("請至少選擇一個題庫！");
+            if (mode === 'auto') {
+                const numQuestions = parseInt(document.getElementById('num-questions').value, 10);
+                const difficultyPrefs = [...document.querySelectorAll('.difficulty-pref:checked')].map(el => el.value);
+                let allAvailableQuestions = [];
+                this.questionBanks.forEach(bank => {
+                    if (this.selectedBankIds.has(bank.id)) {
+                        bank.categories.forEach(cat => {
+                            allAvailableQuestions.push(...cat.questions);
+                        });
+                    }
+                });
+                let filteredQuestions = allAvailableQuestions.filter(q => difficultyPrefs.includes(q.difficulty));
+                if (filteredQuestions.length === 0) return alert("根據您選擇的難度，找不到符合的題目。請注意，此篩選不適用於閱讀理解題型。");
+                this.currentQuiz = filteredQuestions.sort(() => 0.5 - Math.random()).slice(0, numQuestions);
+                this.renderQuizPreview();
+            } else if (mode === 'manual') {
+                this.openManualSelectModal();
+            }
+        },
+
+        renderQuizPreview() { const previewEl=document.getElementById('quiz-preview');const listEl=document.getElementById('quiz-preview-list');if(this.currentQuiz.length===0){previewEl.classList.add('hidden');return;}
+listEl.innerHTML='';this.currentQuiz.forEach((q,index)=>{const optionsHtml=q.options.map((opt,i)=>`
+                    <li class="${i===q.correctAnswerIndex?'font-bold text-green-700':''}">
+                        ${String.fromCharCode(65+i)}. ${opt}
+                    </li>
+                `).join('');const questionEl=document.createElement('div');questionEl.className='mb-4 pb-4 border-b border-dashed border-gray-400';questionEl.innerHTML=`
+                    <p class="font-bold">${index+1}. ${q.questionText} <span class="text-sm font-normal text-blue-600">(${q.difficulty})</span></p>
+                    <ul class="list-none pl-4 mt-2">
+                        ${optionsHtml}
+                    </ul>
+                `;listEl.appendChild(questionEl);});previewEl.classList.remove('hidden');},
+        
+        exportQuiz(format) { if(this.currentQuiz.length===0){alert("沒有可匯出的練習題。");return;}
+let csvContent="";const separator='\t';this.currentQuiz.forEach(q=>{const question=q.questionText;const options=q.options.map(opt=>opt);const answer=q.correctAnswerIndex+1;while(options.length<4){options.push('');}
+let row;if(format==='wordwall'){row=[question,...options.slice(0,4),answer].join(separator);}else if(format==='kahoot'){const timeLimit=60;row=[question,...options.slice(0,4),timeLimit,answer].join(separator);}else if(format==='wayground'){row=[question,'Multiple Choice',...options.slice(0,4),'',answer].join(separator);}else{row=[question,answer,...options.slice(0,4)].join(separator);}
+csvContent+=row+"\r\n";});this.downloadFile(csvContent,`quiz_${format}_${Date.now()}.txt`,'text/plain;charset=utf-8;');},
+
+        downloadFile(content, fileName, contentType) { const blob=new Blob([`\uFEFF${content}`],{type:contentType});const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=fileName;a.click();URL.revokeObjectURL(a.href);},
+
+        // Google Forms 匯出功能
+        exportGoogleForms() {
+            if(this.currentQuiz.length === 0) {
+                alert("沒有可匯出的練習題。");
+                return;
+            }
+
+            // 檢查是否包含閱讀理解類型的題庫，並獲取原始文本
+            const sourceText = this.getSourceTextForCurrentQuiz();
+
+            // 生成 GAS 程式碼
+            const gasCode = this.generateGasCode(this.currentQuiz, sourceText);
+
+            // 顯示在 modal 中
+            document.getElementById('gas-code-content').textContent = gasCode;
+            document.getElementById('google-forms-modal').classList.remove('hidden');
+            document.getElementById('google-forms-modal').classList.add('flex');
+        },
+
+        generateGasCode(questions, sourceText = null) {
+            // 決定表單標題和說明內容
+            let formTitle = 'AI 生成測驗表單';
+            let formDescription = '';
+
+            if (sourceText && sourceText.trim()) {
+                // 如果有原始文本（閱讀理解類型），使用文本的第一行作為標題
+                const lines = sourceText.trim().split('\n');
+                const firstLine = lines[0].trim();
+                if (firstLine && firstLine.length < 100) {
+                    formTitle = firstLine;
+                }
+                formDescription = `請閱讀以下文章：\\n\\n${sourceText.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n')}`;
+            }
+
+            // 基礎 GAS 模板
+            const gasTemplate = `function createQuizForm() {
+  // 自動取得當前綁定的 Google 表單
+  const form = FormApp.getActiveForm();
+
+  // 設定每題的分數，你可以修改這個值
+  const pointsPerQuestion = 5;
+
+  // 設定表單標題
+  form.setTitle("${formTitle.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}");
+
+  // 設定表單說明
+  form.setDescription("${formDescription}");
+
+  // AI 生成的題目
+  const questions = ${JSON.stringify(questions.map(q => ({
+    title: q.questionText,
+    choices: q.options,
+    answer: q.options[q.correctAnswerIndex]
+  })), null, 2)};
+
+  // 設定表單為測驗模式
+  form.setIsQuiz(true);
+
+  questions.forEach(q => {
+    const item = form.addMultipleChoiceItem();
+    item.setTitle(q.title);
+
+    const choices = q.choices.map(choice =>
+      item.createChoice(choice, choice === q.answer) // 如果是正確答案，則設定為正確
+    );
+    item.setChoices(choices);
+    item.setPoints(pointsPerQuestion); // 設定每題的分數
+    item.setRequired(true); // 設定為必填
+  });
+
+  Logger.log('成功新增所有題目到表單！');
+}`;
+            return gasTemplate;
+        },
+
+        // 獲取當前測驗的原始文本（如果來自閱讀理解類型）
+        getSourceTextForCurrentQuiz() {
+            // 檢查選中的題庫是否包含閱讀理解類型
+            const selectedTypes = this.getSelectedBankTypes();
+            if (!selectedTypes.has('comprehension')) {
+                return null; // 不是閱讀理解類型
+            }
+
+            // 獲取選中的閱讀理解題庫的原始文本
+            for (const bank of this.questionBanks) {
+                if (this.selectedBankIds.has(bank.id)) {
+                    const bankType = this.detectBankType(bank);
+                    if (bankType === 'comprehension' && bank.sourceText) {
+                        return bank.sourceText;
+                    }
+                }
+            }
+
+            return null;
+        },
+
+        copyGasCode() {
+            const gasCode = document.getElementById('gas-code-content').textContent;
+            const textarea = document.createElement('textarea');
+            textarea.value = gasCode;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            // 顯示複製成功訊息
+            const copyBtn = document.getElementById('copy-gas-code-btn');
+            const originalText = copyBtn.textContent;
+            copyBtn.textContent = '已複製！';
+            copyBtn.style.backgroundColor = '#10b981';
+            setTimeout(() => {
+                copyBtn.textContent = originalText;
+                copyBtn.style.backgroundColor = '';
+            }, 2000);
+        },
+
+        openGasInstructionsModal() {
+            document.getElementById('gas-instructions-modal').classList.remove('hidden');
+            document.getElementById('gas-instructions-modal').classList.add('flex');
+        },
+
+        closeGasInstructionsModal() {
+            document.getElementById('gas-instructions-modal').classList.add('hidden');
+            document.getElementById('gas-instructions-modal').classList.remove('flex');
+        },
+
+        closeGoogleFormsModal() {
+            document.getElementById('google-forms-modal').classList.add('hidden');
+            document.getElementById('google-forms-modal').classList.remove('flex');
+        },
+        async exportAllData() { if(this.questionBanks.length===0){alert("沒有任何資料可以匯出。");return;}
+const dataStr=JSON.stringify(this.questionBanks,null,2);this.downloadFile(dataStr,'ai_quiz_backup.json','application/json');},
+        importAllData(event) { const file=event.target.files[0];if(!file)return;if(!confirm("匯入題庫資料，如有相同內容的題庫將只保留一個，確定要繼續嗎？")){event.target.value='';return;}
+const reader=new FileReader();reader.onload=(e)=>{try{const importedBanks=JSON.parse(e.target.result);if(!Array.isArray(importedBanks))throw new Error("JSON 格式不正確。");if(importedBanks.length>0){const first=importedBanks[0];if(!first.id||!first.name||!first.categories){throw new Error("JSON 檔案結構不符。");}}
+// 建立內容比對用的函數
+const getBankContentSignature = (bank) => {
+    const categories = (bank.categories || []).map(cat => ({
+        name: cat.name,
+        questions: (cat.questions || []).map(q => ({
+            questionText: q.questionText?.trim(),
+            options: q.options || [],
+            correctAnswerIndex: q.correctAnswerIndex,
+            difficulty: q.difficulty
+        }))
+    }));
+    return JSON.stringify(categories);
+};
+// 載入現有題庫進行比對
+const transaction=this.db.transaction(["questionBanks"],"readwrite");const store=transaction.objectStore("questionBanks");const getAllRequest=store.getAll();
+getAllRequest.onsuccess=()=>{
+    const existingBanks=getAllRequest.result;
+    const existingSignatures=new Set();
+    const banksToKeep=[];
+    // 建立現有題庫的內容簽名
+    existingBanks.forEach(bank=>{
+        const signature=getBankContentSignature(bank);
+        if(!existingSignatures.has(signature)){
+            existingSignatures.add(signature);
+            banksToKeep.push(bank);
+        }
+    });
+    // 檢查匯入的題庫，只添加內容不重複的
+    let addedCount=0;
+    importedBanks.forEach(importBank=>{
+        const signature=getBankContentSignature(importBank);
+        if(!existingSignatures.has(signature)){
+            existingSignatures.add(signature);
+            banksToKeep.push({...importBank,id:`bank-${Date.now()}-${Math.random().toString(36).substr(2,9)}`});
+            addedCount++;
+        }
+    });
+    // 清空資料庫並重新寫入去重後的題庫
+    store.clear();
+    banksToKeep.forEach(bank=>{store.put(bank);});
+    alert(`匯入完成！新增了 ${addedCount} 個題庫，已自動去除重複內容。`);
+    this.loadBanksFromDB();
+    this.closeDataModal();
+};
+getAllRequest.onerror=(event)=>{throw new Error("讀取現有資料時發生錯誤："+event.target.errorCode);};}catch(error){alert(`匯入失敗：${error.message}`);}finally{event.target.value='';}};reader.readAsText(file);},
+
+        openEditModal(bankId) {
+            this.editingBankId = bankId;
+            const bank = this.questionBanks.find(b => b.id === bankId);
+            if (!bank) return;
+            
+            document.getElementById('edit-modal-title').textContent = `編輯題庫: ${bank.name}`;
+            const contentEl = document.getElementById('edit-modal-content');
+            contentEl.innerHTML = '';
+
+            // 添加題庫標題編輯區域
+            const titleSection = document.createElement('div');
+            titleSection.className = 'mb-6 p-4 bg-blue-50 border-2 border-blue-200 rounded-lg';
+            titleSection.innerHTML = `
+                <div class="mb-4">
+                    <label class="font-bold block mb-2">題庫標題:</label>
+                    <input type="text" id="edit-bank-title" class="pop-input w-full p-2" value="${bank.name.replace(/"/g, '&quot;')}">
+                </div>
+            `;
+            contentEl.appendChild(titleSection);
+
+            bank.categories.forEach((category, catIndex) => {
+                const categoryEl = document.createElement('div');
+                categoryEl.innerHTML = `<h3 class="text-xl font-bold mt-4 mb-2 p-2 bg-yellow-100 border-b-2 border-yellow-400">分類: ${category.name}</h3>`;
+                
+                category.questions.forEach((q, qIndex) => {
+                    const questionCard = document.createElement('div');
+                    questionCard.className = 'p-4 border border-gray-300 rounded-lg mb-4';
+                    questionCard.dataset.catIndex = catIndex;
+                    questionCard.dataset.qIndex = qIndex;
+
+                    const optionsHtml = q.options.map((opt, optIndex) => `
+                        <div class="flex items-center mb-1">
+                            <input type="radio" name="correct-answer-${catIndex}-${qIndex}" value="${optIndex}" ${optIndex === q.correctAnswerIndex ? 'checked' : ''} class="mr-2">
+                            <input type="text" value="${opt.replace(/"/g, '&quot;')}" class="pop-input w-full p-1 option-input">
+                        </div>
+                    `).join('');
+
+                    questionCard.innerHTML = `
+                        <label class="font-bold">題目:</label>
+                        <textarea class="pop-textarea w-full h-24 p-1 question-text">${q.questionText}</textarea>
+                        <label class="font-bold mt-2 block">選項 (請勾選正確答案):</label>
+                        ${optionsHtml}
+                        <div class="mt-2 flex items-center justify-between">
+                            <label class="font-bold">類型/難度:</label>
+                            <input type="text" class="pop-input p-1 difficulty-input" value="${q.difficulty}">
+                        </div>
+                    `;
+                    categoryEl.appendChild(questionCard);
+                });
+                contentEl.appendChild(categoryEl);
+            });
+
+            document.getElementById('edit-bank-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeEditModal() {
+            document.getElementById('edit-bank-modal').classList.replace('flex', 'hidden');
+            this.editingBankId = null;
+        },
+
+        saveBankEdits() {
+            const bank = this.questionBanks.find(b => b.id === this.editingBankId);
+            if (!bank) return;
+
+            // 更新題庫標題
+            const titleInput = document.getElementById('edit-bank-title');
+            if (titleInput) {
+                bank.name = titleInput.value.trim() || bank.name;
+            }
+
+            const contentEl = document.getElementById('edit-modal-content');
+            contentEl.querySelectorAll('[data-cat-index]').forEach(card => {
+                const catIndex = parseInt(card.dataset.catIndex, 10);
+                const qIndex = parseInt(card.dataset.qIndex, 10);
+                
+                const question = bank.categories[catIndex].questions[qIndex];
+                
+                question.questionText = card.querySelector('.question-text').value;
+                question.difficulty = card.querySelector('.difficulty-input').value;
+                question.correctAnswerIndex = parseInt(card.querySelector('input[type="radio"]:checked').value, 10);
+                question.options = Array.from(card.querySelectorAll('.option-input')).map(input => input.value);
+            });
+
+            this.saveBankToDB(bank);
+            this.closeEditModal();
+            this.renderBankList();
+            alert('變更已儲存！');
+        },
+
+        loadMaterialLibrary() {
+            const materialList = document.getElementById('material-list');
+            const noMaterials = document.getElementById('no-materials');
+
+            // 清空現有列表
+            materialList.innerHTML = '';
+
+            // 獲取所有有 sourceText 的題庫
+            const materialsWithSource = this.questionBanks.filter(bank => bank.sourceText && bank.sourceText.trim());
+
+            // 去重：對於相同的 sourceText，只保留最早創建的題庫（ID 中時間戳最小的）
+            const uniqueMaterials = [];
+            const sourceTextMap = new Map();
+
+            materialsWithSource.forEach(bank => {
+                const sourceText = bank.sourceText.trim();
+
+                if (!sourceTextMap.has(sourceText)) {
+                    // 第一次遇到這個 sourceText
+                    sourceTextMap.set(sourceText, bank);
+                    uniqueMaterials.push(bank);
+                } else {
+                    // 已經存在相同的 sourceText，比較創建時間
+                    const existingBank = sourceTextMap.get(sourceText);
+
+                    // 從 ID 中提取時間戳進行比較 (格式: bank-{timestamp})
+                    const existingTimestamp = parseInt(existingBank.id.split('-')[1]);
+                    const currentTimestamp = parseInt(bank.id.split('-')[1]);
+
+                    if (currentTimestamp < existingTimestamp) {
+                        // 當前題庫更早，替換原有的
+                        const index = uniqueMaterials.indexOf(existingBank);
+                        uniqueMaterials[index] = bank;
+                        sourceTextMap.set(sourceText, bank);
+                    }
+                    // 如果當前題庫較晚，則忽略它
+                }
+            });
+
+            if (uniqueMaterials.length === 0) {
+                noMaterials.classList.remove('hidden');
+                return;
+            }
+
+            noMaterials.classList.add('hidden');
+
+            uniqueMaterials.forEach(bank => {
+                const materialItem = document.createElement('div');
+                materialItem.className = 'p-3 border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors';
+                materialItem.dataset.bankId = bank.id;
+
+                // 截取文本預覽（前100字）
+                const preview = bank.sourceText.length > 100
+                    ? bank.sourceText.substring(0, 100) + '...'
+                    : bank.sourceText;
+
+                materialItem.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div class="flex-1">
+                            <h4 class="font-bold text-lg text-blue-600">${bank.name}</h4>
+                            <p class="text-sm text-gray-600 mt-1 line-clamp-3">${preview}</p>
+                            <div class="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                                <span>${bank.categories?.length || 0} 個分類</span>
+                                <span>${bank.categories?.reduce((sum, cat) => sum + (cat.questions?.length || 0), 0) || 0} 題</span>
+                            </div>
+                        </div>
+                        <div class="ml-4 flex gap-2">
+                            <button class="select-material-btn pop-button bg-blue-400 hover:bg-blue-500 px-3 py-1 rounded text-sm whitespace-nowrap" data-bank-id="${bank.id}">
+                                選用此教材
+                            </button>
+                            <button class="delete-material-btn pop-button bg-red-400 hover:bg-red-500 px-3 py-1 rounded text-sm whitespace-nowrap" data-bank-id="${bank.id}" title="刪除教材">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                `;
+
+                materialList.appendChild(materialItem);
+            });
+
+            // 為按鈕添加事件監聽器
+            materialList.querySelectorAll('.select-material-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.selectMaterial(e.target.dataset.bankId);
+                });
+            });
+
+            materialList.querySelectorAll('.delete-material-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteMaterial(e.target.dataset.bankId);
+                });
+            });
+        },
+
+        selectMaterial(bankId) {
+            const bank = this.questionBanks.find(b => b.id === bankId);
+            if (!bank || !bank.sourceText) {
+                alert('無法找到該教材的內容。');
+                return;
+            }
+
+            // 將教材內容填入文字輸入區域
+            document.getElementById('text-input').value = bank.sourceText;
+
+            // 切換到貼上文字選項卡
+            this.switchTab('paste');
+
+            // 預填建議的題庫名稱
+            document.getElementById('bank-name').value = `${bank.name}_新版本`;
+            document.getElementById('bank-name').placeholder = `例如：${bank.name}_新版本`;
+
+            alert(`已載入「${bank.name}」的教材內容，請重新設定題庫名稱和AI生成參數。`);
+        },
+
+        deleteMaterial(bankId) {
+            const bank = this.questionBanks.find(b => b.id === bankId);
+            if (!bank) {
+                alert('找不到該教材。');
+                return;
+            }
+
+            // 找到所有使用相同教材內容的題庫
+            const sourceText = bank.sourceText.trim();
+            const relatedBanks = this.questionBanks.filter(b =>
+                b.sourceText && b.sourceText.trim() === sourceText
+            );
+
+            const confirmMessage = `確定要從教材庫中移除「${bank.name}」嗎？\n\n📝 注意：\n• 這只會從教材庫列表中移除此教材\n• 已建立的 ${relatedBanks.length} 個相關題庫將會保留\n• 您仍可在題庫列表中使用這些題庫\n• 此操作僅清除教材的 sourceText，無法復原`;
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            try {
+                // 清除所有相關題庫的 sourceText，但保留題庫本身
+                const transaction = this.db.transaction(["questionBanks"], "readwrite");
+                const store = transaction.objectStore("questionBanks");
+                let completedCount = 0;
+
+                relatedBanks.forEach(relatedBank => {
+                    // 創建新的題庫對象，清除 sourceText
+                    const updatedBank = { ...relatedBank };
+                    delete updatedBank.sourceText;
+
+                    // 更新記憶體中的題庫
+                    const memoryIndex = this.questionBanks.findIndex(b => b.id === relatedBank.id);
+                    if (memoryIndex !== -1) {
+                        this.questionBanks[memoryIndex] = updatedBank;
+                    }
+
+                    // 更新資料庫
+                    const updateRequest = store.put(updatedBank);
+
+                    updateRequest.onsuccess = () => {
+                        completedCount++;
+                        if (completedCount === relatedBanks.length) {
+                            // 所有更新完成
+                            this.loadMaterialLibrary();
+                            this.renderBankList();
+                            alert(`教材「${bank.name}」已從教材庫中移除。\n相關的 ${relatedBanks.length} 個題庫已保留。`);
+                        }
+                    };
+
+                    updateRequest.onerror = (event) => {
+                        console.error('更新失敗:', event);
+                        alert('移除教材時發生錯誤，請稍後再試。');
+                    };
+                });
+
+            } catch (error) {
+                console.error('移除教材時發生錯誤:', error);
+                alert('移除教材失敗，請稍後再試。');
+            }
+        },
+
+        // 新增教材模態框
+        openMaterialModal() {
+            document.getElementById('material-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeMaterialModal() {
+            document.getElementById('material-modal').classList.replace('flex', 'hidden');
+        },
+
+        // 資料管理模態框
+        openDataModal() {
+            document.getElementById('data-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeDataModal() {
+            document.getElementById('data-modal').classList.replace('flex', 'hidden');
+        },
+
+        openGameSelectModal() {
+            if (this.currentQuiz.length === 0) {
+                alert('請先生成練習題！');
+                return;
+            }
+
+            // 添加遊戲選項按鈕的點擊事件
+            document.querySelectorAll('.game-option-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => this.downloadGameWithQuiz(e.target.closest('.game-option-btn').dataset.url, e.target.closest('.game-option-btn').dataset.game));
+            });
+
+            document.getElementById('game-select-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeGameSelectModal() {
+            document.getElementById('game-select-modal').classList.replace('flex', 'hidden');
+        },
+
+        async downloadGameWithQuiz(gameUrl, gameName) {
+            try {
+                this.showLoading('正在載入遊戲並填入題庫...');
+                this.closeGameSelectModal();
+
+                // 載入遊戲HTML
+                const response = await fetch(gameUrl);
+                if (!response.ok) {
+                    throw new Error(`無法載入遊戲：${response.status}`);
+                }
+
+                let gameHTML = await response.text();
+
+                // 轉換題庫格式並填入HTML
+                const quizData = this.convertQuizForGame();
+                gameHTML = this.injectQuizIntoGame(gameHTML, quizData);
+
+                // 直接下載修改後的HTML
+                const fileName = `${gameName}_遊戲_${Date.now()}.html`;
+                this.downloadFile(gameHTML, fileName, 'text/html;charset=utf-8;');
+
+            } catch (error) {
+                console.error('下載遊戲失敗:', error);
+                alert(`下載遊戲失敗：${error.message}`);
+            } finally {
+                this.hideLoading();
+            }
+        },
+
+        convertQuizForGame() {
+            // 將題庫轉換為適合textarea格式的字符串，使用與書商格式相同的順序
+            let gameContent = '';
+
+            this.currentQuiz.forEach((q, index) => {
+                const question = q.questionText;
+                const options = q.options.map(opt => opt);
+                const answer = q.correctAnswerIndex + 1; // 答案從1開始計算
+
+                // 確保有4個選項
+                while (options.length < 4) {
+                    options.push('');
+                }
+
+                // 使用與書商格式相同的順序：題目\t答案\t選項A\t選項B\t選項C\t選項D
+                const line = [question, answer, ...options.slice(0, 4)].join('\t');
+                gameContent += line + '\r\n';
+            });
+
+            return gameContent.trim();
+        },
+
+        injectQuizIntoGame(gameHTML, quizData) {
+            // 使用DOMParser解析HTML
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(gameHTML, 'text/html');
+
+            // 尋找所有textarea元素
+            const textareas = doc.querySelectorAll('textarea');
+
+            if (textareas.length > 0) {
+                // 將題庫資料填入第一個textarea
+                textareas[0].textContent = quizData;
+            } else {
+                // 如果沒有找到textarea，嘗試尋找其他可能的容器
+                console.warn('未找到textarea元素，題庫可能無法正確填入');
+            }
+
+            // 將修改後的文檔轉回HTML字符串
+            return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
+        },
+
+        openManualSelectModal() {
+            const contentEl = document.getElementById('manual-select-content');
+            contentEl.innerHTML = '';
+            let questionCounter = 0;
+
+            this.questionBanks.forEach(bank => {
+                if (this.selectedBankIds.has(bank.id)) {
+                    bank.categories.forEach(cat => {
+                        (cat.questions || []).forEach(q => {
+                            questionCounter++;
+                            const itemEl = document.createElement('div');
+                            itemEl.className = 'p-3 mb-2 border rounded-md hover:bg-gray-100';
+                            itemEl.innerHTML = `
+                                <label class="flex items-start">
+                                    <input type="checkbox" class="manual-q-checkbox h-5 w-5 mt-1 mr-3" data-question='${JSON.stringify(q)}'>
+                                    <div>
+                                        <p>${questionCounter}. ${q.questionText}</p>
+                                        <p class="text-sm text-gray-500">(${bank.name} - ${cat.name} - ${q.difficulty})</p>
+                                    </div>
+                                </label>
+                            `;
+                            contentEl.appendChild(itemEl);
+                        });
+                    });
+                }
+            });
+
+            if (questionCounter === 0) return alert('選中的題庫中沒有題目可供選擇。');
+            document.getElementById('manual-select-modal').classList.replace('hidden', 'flex');
+        },
+        
+        closeManualSelectModal() {
+            document.getElementById('manual-select-modal').classList.replace('flex', 'hidden');
+        },
+        
+        generateManualQuiz() {
+            const selectedQuestions = [];
+            document.querySelectorAll('.manual-q-checkbox:checked').forEach(checkbox => {
+                selectedQuestions.push(JSON.parse(checkbox.dataset.question));
+            });
+            
+            if (selectedQuestions.length === 0) {
+                return alert('您沒有選擇任何題目！');
+            }
+
+            this.currentQuiz = selectedQuestions;
+            this.renderQuizPreview();
+            this.closeManualSelectModal();
+        },
+
+        // --------- NEW FUNCTIONS FOR BATCH ADD ---------
+        openAddQuestionsModal() {
+            // This function is for creating a NEW bank from pasted content
+            document.getElementById('new-bank-name').value = '';
+            document.getElementById('new-question-category').value = '';
+            document.getElementById('batch-input-text').value = '';
+            document.getElementById('new-question-type').value = 'knowledge';
+            this.updateDifficultyOptions(); 
+            document.getElementById('add-questions-modal').classList.replace('hidden', 'flex');
+        },
+
+        closeAddQuestionsModal() {
+            document.getElementById('add-questions-modal').classList.replace('flex', 'hidden');
+        },
+
+        updateDifficultyOptions() {
+            const type = document.getElementById('new-question-type').value;
+            const difficultySelect = document.getElementById('new-question-difficulty');
+            difficultySelect.innerHTML = '';
+            let options = [];
+            if (type === 'knowledge') {
+                options = ['Easy', 'Medium', 'Hard'];
+            } else {
+                options = ['提取訊息', '文意推論', '詮釋整合', '反思評價'];
+            }
+            options.forEach(opt => {
+                const optionEl = document.createElement('option');
+                optionEl.value = opt;
+                optionEl.textContent = opt;
+                difficultySelect.appendChild(optionEl);
+            });
+            if (type === 'knowledge') {
+                difficultySelect.value = 'Medium'; // Default to medium
+            }
+        },
+
+        saveNewQuestions() {
+            const bankName = document.getElementById('new-bank-name').value.trim();
+            const categoryName = document.getElementById('new-question-category').value.trim();
+            const difficulty = document.getElementById('new-question-difficulty').value;
+            const text = document.getElementById('batch-input-text').value.trim();
+
+            if (!bankName) {
+                alert('請輸入新題庫的名稱！');
+                return;
+            }
+            if (!categoryName) {
+                alert('請輸入題目分類名稱！');
+                return;
+            }
+            if (!text) {
+                alert('請貼上題目內容！');
+                return;
+            }
+
+            try {
+                const newQuestions = this.parsePublisherFormat(text, difficulty);
+                if (newQuestions.length === 0) {
+                    alert('沒有成功解析任何題目，請檢查格式是否正確。\n格式應為：題目(Tab)答案數字(Tab)選項A(Tab)選項B(Tab)選項C(Tab)選項D');
+                    return;
+                }
+                
+                // Create a new bank object
+                const newBank = {
+                    id: `bank-${Date.now()}`,
+                    name: bankName,
+                    sourceText: null, // No source text for manually created banks
+                    categories: [{
+                        name: categoryName,
+                        questions: newQuestions
+                    }]
+                };
+
+                this.saveBankToDB(newBank, true); // The 'true' flag will trigger a list refresh
+                this.closeAddQuestionsModal();
+                
+                alert(`成功建立題庫「${bankName}」並新增 ${newQuestions.length} 題！`);
+
+            } catch (error) {
+                alert(`建立題庫失敗：${error.message}`);
+            }
+        },
+
+        parsePublisherFormat(text, difficulty) {
+            const questions = [];
+            const lines = text.split('\n').filter(line => line.trim() !== '');
+
+            for (const line of lines) {
+                const parts = line.split('\t');
+                if (parts.length < 6) {
+                    console.warn('Skipping malformed line (not enough parts):', line);
+                    continue;
+                }
+
+                const questionText = parts[0].trim();
+                const correctAnswerIndex = parseInt(parts[1], 10) - 1; // Publisher format is 1-based, our app is 0-based
+                const options = parts.slice(2, 6).map(opt => opt.trim());
+
+                if (questionText && !isNaN(correctAnswerIndex) && correctAnswerIndex >= 0 && correctAnswerIndex < 4 && options.length === 4) {
+                     questions.push({
+                        questionText,
+                        options,
+                        correctAnswerIndex,
+                        difficulty
+                    });
+                } else {
+                     console.warn('Skipping invalid data line:', line);
+                }
+            }
+            return questions;
+        }
+
+    };
+
+    window.addEventListener('DOMContentLoaded', () => app.init());
+    </script>
+</body>
+</html>
